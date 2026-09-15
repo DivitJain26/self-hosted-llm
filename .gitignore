@@ -1,0 +1,6 @@
+models/*
+!models/.gitkeep
+.env
+.env.ec2
+__pycache__/
+*.pyc

@@ -1,0 +1,57 @@
+services:
+  gateway:
+    build:
+      context: ./gateway
+    image: llm-gateway:latest
+    ports:
+      - "8000:8000"
+    environment:
+      INFERENCE_URL: http://inference:8000
+      MODEL_NAME: ${MODEL_NAME}
+      REQUEST_TIMEOUT: ${REQUEST_TIMEOUT:-600}
+    depends_on:
+      inference:
+        condition: service_started
+    networks: [llmnet]
+    restart: unless-stopped
+
+  inference:
+    build:
+      context: ./inference
+      args:
+        VLLM_IMAGE: ${VLLM_IMAGE}
+    image: llm-inference:latest
+    expose:
+      - "8000"
+    volumes:
+      - ./models:/models
+    environment:
+      HF_HOME: /models/hf
+      VLLM_CACHE_ROOT: /models/vllm_cache
+      VLLM_CPU_KVCACHE_SPACE: ${VLLM_CPU_KVCACHE_SPACE:-4}
+      VLLM_CPU_OMP_THREADS_BIND: ${VLLM_CPU_OMP_THREADS_BIND:-auto}
+      VLLM_CPU_NUM_OF_RESERVED_CPU: ${VLLM_CPU_NUM_OF_RESERVED_CPU:-1}
+    command:
+      - ${MODEL_NAME}
+      - --served-model-name=${MODEL_NAME}
+      - --host=0.0.0.0
+      - --port=8000
+      - --max-model-len=${MAX_MODEL_LEN:-2048}
+      - --max-num-batched-tokens=${MAX_NUM_BATCHED_TOKENS:-512}
+      - --max-num-seqs=${MAX_NUM_SEQS:-4}
+      - --dtype=${DTYPE:-float32}
+      - --enforce-eager
+    healthcheck:
+      test: ["CMD-SHELL", "python3 -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/health')\""]
+      interval: 15s
+      timeout: 5s
+      retries: 40
+      start_period: 600s
+    cap_add: [SYS_NICE]
+    ipc: host
+    networks: [llmnet]
+    restart: unless-stopped
+
+networks:
+  llmnet:
+    driver: bridge
